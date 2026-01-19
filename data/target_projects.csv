@@ -1,0 +1,3 @@
+project_name,git_url,branch,commit_id,maintainer,assessment_type
+Gitleaks,https://github.com/gitleaks/gitleaks.git,master,,jay,Initial
+Gemini,https://github.com/google-gemini/gemini-cli.git,nuked_prompt,cd021ce93049913fad307d88194045c9cf8851dc,Jay,retest
