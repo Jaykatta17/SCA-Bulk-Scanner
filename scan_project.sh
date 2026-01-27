@@ -117,7 +117,7 @@ for PROJECT_NAME in $PROJECT_NAMES; do
     if [[ $? -eq 0 ]]; then
         echo "   ✅ Report generated: $(basename "$OUTPUT_FILE")"
         # Clean up location paths in HTML
-        find "$REPORT_DIR" -type f -name "*.html" -exec sed -i -E 's|<td>\\Location<RealPath=\"([^\"]+)\",.*</td>|<td>\1</td>|g' {} \;
+        find "$REPORT_DIR" -type f -name "*.html" -exec sed -i -E 's|<td>\[Location<RealPath="([^"]+)".*>\]</td>|<td>\1</td>|g' {} +;
         ((SUCCESS_COUNT++))
     else
         echo "   ❌ Error generating report for $PROJECT_NAME"
