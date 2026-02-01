@@ -10,11 +10,12 @@ import os
 import subprocess
 import sys
 import argparse
+import re
 from pathlib import Path
 
 # Configuration
 BASE_DIR = Path(__file__).parent.absolute()
-CSV_FILE = BASE_DIR / "data" / "target_projects.csv"
+DEFAULT_CSV_FILE = BASE_DIR / "data" / "target_projects.csv"
 CLONE_DIR = BASE_DIR / "cloned_projects"
 
 def run_command(cmd, cwd=None):
@@ -34,17 +35,25 @@ def run_command(cmd, cwd=None):
         print(f"Error: {e.stderr}")
         return False, e.stderr
 
-def clone_repository(project_name, git_url, branch, commit_id):
+def sanitize_name(name):
+    """Sanitize project name for directory use"""
+    # Replace spaces and special characters with underscores
+    sanitized = re.sub(r'[^a-zA-Z0-9\-_]', '_', name)
+    # Remove consecutive underscores
+    sanitized = re.sub(r'_+', '_', sanitized)
+    return sanitized.strip('_')
+
+def clone_repository(dir_name, git_url, branch, commit_id):
     """Clone repository and checkout specific commit if provided"""
     
-    project_path = CLONE_DIR / project_name
+    project_path = CLONE_DIR / dir_name
     
     # Remove existing directory if it exists
     if project_path.exists():
-        print(f"🗑️  Removing existing directory: {project_name}")
+        print(f"🗑️  Removing existing directory: {dir_name}")
         run_command(f'rm -rf "{project_path}"')
     
-    print(f"\n🔹 Cloning: {project_name}")
+    print(f"\n🔹 Cloning: {dir_name}")
     print(f"   URL: {git_url}")
     print(f"   Branch: {branch}")
     
@@ -52,7 +61,7 @@ def clone_repository(project_name, git_url, branch, commit_id):
     clone_cmd = f'git clone -b {branch} {git_url} "{project_path}"'
     success, _ = run_command(clone_cmd, cwd=CLONE_DIR)
     if not success:
-        print(f"❌ Failed to clone {project_name}")
+        print(f"❌ Failed to clone to {dir_name}")
         return False
     
     # Checkout specific commit if provided
@@ -69,29 +78,24 @@ def clone_repository(project_name, git_url, branch, commit_id):
         if success:
             print(f"   Commit: {latest_commit} (latest)")
     
-    print(f"✅ Successfully cloned: {project_name}")
+    print(f"✅ Successfully cloned: {dir_name}")
     return True
 
 def main():
     """Main execution function"""
     parser = argparse.ArgumentParser(description="Repository Cloner for SCA Scanner")
     parser.add_argument("--project", help="Name of a specific project to clone")
-    parser.add_argument("--list", action="store_true", help="List all project names from CSV")
+    parser.add_argument("--index-id", type=int, help="Index of a specific project to clone (1-indexed)")
+    parser.add_argument("--list", action="store_true", help="List all project names from CSV in structured format")
+    parser.add_argument("--csv", help="Custom CSV file path")
     args = parser.parse_args()
 
-    # Check if CSV file exists
-    if not CSV_FILE.exists():
-        print(f"❌ CSV file not found: {CSV_FILE}")
-        sys.exit(1)
+    csv_file = Path(args.csv) if args.csv else DEFAULT_CSV_FILE
 
-    if args.list:
-        with open(CSV_FILE, 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                name = row.get('project_name', '').strip()
-                if name:
-                    print(name)
-        return
+    # Check if CSV file exists
+    if not csv_file.exists():
+        print(f"❌ CSV file not found: {csv_file}")
+        sys.exit(1)
 
     # Create clone directory
     CLONE_DIR.mkdir(exist_ok=True)
@@ -101,10 +105,10 @@ def main():
     failed_clones = 0
     projects_found = 0
     
-    with open(CSV_FILE, 'r', encoding='utf-8') as f:
+    with open(csv_file, 'r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         
-        for row in reader:
+        for i, row in enumerate(reader, 1):
             project_name = row.get('project_name', '').strip()
             git_url = row.get('git_url', '').strip()
             branch = row.get('branch', 'main').strip() or 'main'
@@ -112,25 +116,49 @@ def main():
             
             if not project_name or not git_url:
                 continue
-                
-            # If a specific project is requested, skip others
-            if args.project and project_name != args.project:
-                continue
             
+            # Create a unique directory name using index and sanitized name
+            sanitized = sanitize_name(project_name)
+            dir_name = f"{sanitized}_{i}"
+            
+            if args.list:
+                # Output format: index|original_name|dir_name
+                print(f"{i}|{project_name}|{dir_name}")
+                continue
+
+            # Check if this specific project should be cloned
+            is_target = False
+            if args.index_id:
+                if i == args.index_id:
+                    is_target = True
+            elif args.project:
+                if project_name == args.project:
+                    is_target = True
+            else:
+                # If no filters, clone everything
+                is_target = True
+            
+            if not is_target:
+                continue
+                
             projects_found += 1
-            if clone_repository(project_name, git_url, branch, commit_id):
+            if clone_repository(dir_name, git_url, branch, commit_id):
                 successful_clones += 1
             else:
                 failed_clones += 1
 
-    if args.project and projects_found == 0:
-        print(f"❌ Project '{args.project}' not found in CSV.")
+    if args.list:
+        return
+
+    if (args.project or args.index_id) and projects_found == 0:
+        target = args.project if args.project else f"index {args.index_id}"
+        print(f"❌ Project '{target}' not found in CSV.")
         sys.exit(1)
 
     if failed_clones > 0:
         sys.exit(1)
 
-    if not args.project:
+    if not args.project and not args.index_id:
         print(f"\n✨ All {successful_clones} repositories cloned successfully!")
 
 if __name__ == "__main__":

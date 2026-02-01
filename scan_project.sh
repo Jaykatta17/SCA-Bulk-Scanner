@@ -14,7 +14,15 @@ GRYPE_IMG="anchore/grype:latest"
 SYFT_IMG="anchore/syft:latest"
 
 # === Create Reports Directory ===
-mkdir -p "$REPORT_DIR"
+if [ ! -d "$REPORT_DIR" ]; then
+    mkdir -p "$REPORT_DIR"
+fi
+
+# === Cleanup Previous Clones ===
+if [ -d "$BASE_DIR/cloned_projects" ]; then
+    echo "🧹 Cleaning up previous cloned projects..."
+    rm -rf "$BASE_DIR/cloned_projects"
+fi
 
 echo "============================================================"
 echo "🚀 SCA Scanner - Bulk Scan Automation"
@@ -33,22 +41,26 @@ echo ""
 echo "🔍 STEP 1: Processing projects sequentially"
 echo "============================================================"
 
-# Get project names from CSV using the list flag
-PROJECT_NAMES=$(python3 "$BASE_DIR/clone_repos.py" --list)
+# Get project info from CSV using the list flag
+# Output format: index|original_name|dir_name
+PROJECT_LIST=$(python3 "$BASE_DIR/clone_repos.py" --list)
 
 SCAN_COUNT=0
 SUCCESS_COUNT=0
 FAIL_COUNT=0
 
-for PROJECT_NAME in $PROJECT_NAMES; do
+# Use a while loop with process substitution to ensure variables persist outside the loop
+while IFS='|' read -r INDEX PROJECT_NAME DIR_NAME; do
+    if [[ -z "$INDEX" ]]; then continue; fi
+    
     ((SCAN_COUNT++))
 
     echo ""
-    echo "🚀 [$SCAN_COUNT] Processing project: $PROJECT_NAME"
+    echo "🚀 [$SCAN_COUNT] Processing project: $PROJECT_NAME (Dir: $DIR_NAME)"
     
-    # 📥 Clone the specific project
+    # 📥 Clone the specific project by its index to avoid name collisions
     echo "   📥 Cloning repository..."
-    python3 "$BASE_DIR/clone_repos.py" --project "$PROJECT_NAME"
+    python3 "$BASE_DIR/clone_repos.py" --index-id "$INDEX"
     
     if [ $? -ne 0 ]; then
         echo "   ❌ Repository cloning failed for $PROJECT_NAME. Skipping."
@@ -56,7 +68,7 @@ for PROJECT_NAME in $PROJECT_NAMES; do
         continue
     fi
 
-    PROJECT_PATH="$BASE_DIR/cloned_projects/$PROJECT_NAME"
+    PROJECT_PATH="$BASE_DIR/cloned_projects/$DIR_NAME"
     
     # Enter project directory
     cd "$PROJECT_PATH" || {
@@ -97,6 +109,7 @@ for PROJECT_NAME in $PROJECT_NAMES; do
     fi
 
     # === Inject Variables into Template ===
+    # Use | as delimiter in sed to avoid issues with / in variables
     sed \
         -e "s|PROJECT_VAR|$PROJECT_NAME|g" \
         -e "s|BRANCH_VAR|$BRANCH|g" \
@@ -105,9 +118,11 @@ for PROJECT_NAME in $PROJECT_NAMES; do
 
     # === Run Grype Scan ===
     echo "   🔎 Running Grype vulnerability scan..."
-    OUTPUT_FILE="$REPORT_DIR/SCA-${PROJECT_NAME}-${SAFE_BRANCH}_${COMMIT}-${SCAN_DATE}.html"
+    # Sanitize project name for filename
+    SAFE_PROJECT_NAME=$(echo "$PROJECT_NAME" | sed 's/[^a-zA-Z0-9\-_]/_/g')
+    OUTPUT_FILE="$REPORT_DIR/SCA-${SAFE_PROJECT_NAME}-${SAFE_BRANCH}_${COMMIT}-${SCAN_DATE}.html"
 
-    docker run --rm -e GRYPE_BY_CVE=true --name grype-scanner-$SCAN_COUNT \
+    docker run --rm -e GRYPE_BY_CVE=true --name "grype-scanner-$SCAN_COUNT" \
          -v "$(pwd)":/app \
          -v "$TEMP_TEMPLATE":"$TEMP_TEMPLATE" \
           $GRYPE_IMG sbom:/app/sbom.json \
@@ -117,7 +132,7 @@ for PROJECT_NAME in $PROJECT_NAMES; do
     if [[ $? -eq 0 ]]; then
         echo "   ✅ Report generated: $(basename "$OUTPUT_FILE")"
         # Clean up location paths in HTML
-        find "$REPORT_DIR" -type f -name "*.html" -exec sed -i -E 's|<td>\[Location<RealPath="([^"]+)".*>\]</td>|<td>\1</td>|g' {} +;
+        find "$REPORT_DIR" -type f -name "$(basename "$OUTPUT_FILE")" -exec sed -i -E 's|<td>\[Location<RealPath="([^"]+)".*>\]</td>|<td>\1</td>|g' {} +;
         ((SUCCESS_COUNT++))
     else
         echo "   ❌ Error generating report for $PROJECT_NAME"
@@ -129,9 +144,10 @@ for PROJECT_NAME in $PROJECT_NAMES; do
     cd "$BASE_DIR" && rm -rf "$PROJECT_PATH"
     
     echo "   ------------------------------------------------------------"
-done
+done < <(echo "$PROJECT_LIST")
 
 # === Final Summary ===
+
 echo ""
 echo "============================================================"
 echo "📊 SCAN SUMMARY"
