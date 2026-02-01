@@ -36,117 +36,158 @@ echo "============================================================"
 TEMP_TEMPLATE="/tmp/html-injected.tmpl"
 trap 'rm -f "$TEMP_TEMPLATE"' EXIT
 
-# === Step 1: Scan projects sequentially from CSV ===
+# === Helpers ===
+format_time() {
+    local T=$1
+    local M=$((T / 60))
+    local S=$((T % 60))
+    if [ $M -gt 0 ]; then
+        printf "%dm %ds" "$M" "$S"
+    else
+        printf "%ds" "$S"
+    fi
+}
+
+# === Step 1: Scan projects in parallel from CSV ===
 echo ""
-echo "🔍 STEP 1: Processing projects sequentially"
+echo "🔍 STEP 1: Processing projects in parallel"
 echo "============================================================"
 
+# Configuration for Parallelism & Resources
+MAX_PARALLEL=6           # Warning: High parallelism for a 4-CPU machine
+CONTAINER_CPUS="4.0"
+CONTAINER_MEM="4086m"
+ACTIVE_JOBS=0
+START_TIME=$SECONDS
+
 # Get project info from CSV using the list flag
-# Output format: index|original_name|dir_name
 PROJECT_LIST=$(python3 "$BASE_DIR/clone_repos.py" --list)
+TOTAL_PROJECTS=$(echo "$PROJECT_LIST" | grep -v "^$" | wc -l)
 
-SCAN_COUNT=0
-SUCCESS_COUNT=0
-FAIL_COUNT=0
+# Temporarily store results to aggregate later
+RESULTS_DIR=$(mktemp -d)
+trap 'rm -rf "$RESULTS_DIR"' EXIT
 
-# Use a while loop with process substitution to ensure variables persist outside the loop
-while IFS='|' read -r INDEX PROJECT_NAME DIR_NAME; do
-    if [[ -z "$INDEX" ]]; then continue; fi
+process_project() {
+    local INDEX=$1
+    local PROJECT_NAME=$2
+    local DIR_NAME=$3
+    local SCAN_ID=$4
+    local JOB_START=$SECONDS
     
-    ((SCAN_COUNT++))
-
-    echo ""
-    echo "🚀 [$SCAN_COUNT] Processing project: $PROJECT_NAME (Dir: $DIR_NAME)"
+    echo "🚀 [$SCAN_ID of $TOTAL_PROJECTS] Starting: $PROJECT_NAME"
     
-    # 📥 Clone the specific project by its index to avoid name collisions
-    echo "   📥 Cloning repository..."
-    python3 "$BASE_DIR/clone_repos.py" --index-id "$INDEX"
+    # 📥 Clone the specific project by its index
+    python3 "$BASE_DIR/clone_repos.py" --index-id "$INDEX" > /dev/null 2>&1
     
     if [ $? -ne 0 ]; then
-        echo "   ❌ Repository cloning failed for $PROJECT_NAME. Skipping."
-        ((FAIL_COUNT++))
-        continue
+        echo "   ❌ [$SCAN_ID] Cloning failed: $PROJECT_NAME"
+        echo "fail" > "$RESULTS_DIR/$SCAN_ID"
+        return
     fi
 
-    PROJECT_PATH="$BASE_DIR/cloned_projects/$DIR_NAME"
+    local PROJECT_PATH="$BASE_DIR/cloned_projects/$DIR_NAME"
     
     # Enter project directory
-    cd "$PROJECT_PATH" || {
-        echo "   ❌ Failed to enter directory: $PROJECT_PATH"
-        ((FAIL_COUNT++))
-        continue
-    }
+    cd "$PROJECT_PATH" || return
 
     # === Check if it's a Git repo ===
     if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        echo "   ⚠️  Skipping $PROJECT_NAME (not a Git repository)"
-        ((FAIL_COUNT++))
-        # Cleanup anyway
+        echo "   ⚠️  [$SCAN_ID] Not a Git repo: $PROJECT_NAME"
+        echo "fail" > "$RESULTS_DIR/$SCAN_ID"
         cd "$BASE_DIR" && rm -rf "$PROJECT_PATH"
-        continue
+        return
     fi
 
     # === Get current branch and commit ID ===
-    BRANCH=$(git rev-parse --abbrev-ref HEAD)
-    SAFE_BRANCH=${BRANCH//\//_}
-    COMMIT=$(git rev-parse --short HEAD)
-
-    echo "   ⭐ Branch: $BRANCH | Commit: $COMMIT"
+    local BRANCH=$(git rev-parse --abbrev-ref HEAD)
+    local SAFE_BRANCH=${BRANCH//\//_}
+    local COMMIT=$(git rev-parse --short HEAD)
 
     # === Generate SBOM ===
-    echo "   📦 Generating SBOM..."
-    docker run --rm -e SYFT_CHECK_FOR_APP_UPDATE=false \
+    docker run --rm -e SYFT_CHECK_FOR_APP_UPDATE=false --name "SYFT-scanner-$SCAN_ID" \
+        --cpus="$CONTAINER_CPUS" \
+        --memory="$CONTAINER_MEM" \
+        --memory-swap="$CONTAINER_MEM" \
         -v "$(pwd):/app" \
         $SYFT_IMG /app/ \
-        -o cyclonedx-json > sbom.json
+        -o cyclonedx-json > sbom.json 2>/dev/null
 
     if [ $? -ne 0 ]; then
-        echo "   ❌ SBOM generation failed for $PROJECT_NAME"
-        ((FAIL_COUNT++))
-        # Cleanup
+        echo "   ❌ [$SCAN_ID] SBOM failed: $PROJECT_NAME"
+        echo "fail" > "$RESULTS_DIR/$SCAN_ID"
         cd "$BASE_DIR" && rm -rf "$PROJECT_PATH"
-        continue
+        return
     fi
 
     # === Inject Variables into Template ===
-    # Use | as delimiter in sed to avoid issues with / in variables
+    local TEMP_TEMPLATE_JOB="/tmp/html-injected-$SCAN_ID.tmpl"
     sed \
         -e "s|PROJECT_VAR|$PROJECT_NAME|g" \
         -e "s|BRANCH_VAR|$BRANCH|g" \
         -e "s|COMMIT_VAR|$COMMIT|g" \
-        "$TEMPLATE_PATH" > "$TEMP_TEMPLATE"
+        "$TEMPLATE_PATH" > "$TEMP_TEMPLATE_JOB"
 
     # === Run Grype Scan ===
-    echo "   🔎 Running Grype vulnerability scan..."
-    # Sanitize project name for filename
-    SAFE_PROJECT_NAME=$(echo "$PROJECT_NAME" | sed 's/[^a-zA-Z0-9\-_]/_/g')
-    OUTPUT_FILE="$REPORT_DIR/SCA-${SAFE_PROJECT_NAME}-${SAFE_BRANCH}_${COMMIT}-${SCAN_DATE}.html"
+    local SAFE_PROJECT_NAME=$(echo "$PROJECT_NAME" | sed 's/[^a-zA-Z0-9\-_]/_/g')
+    local OUTPUT_FILE="$REPORT_DIR/SCA-${SAFE_PROJECT_NAME}-${SAFE_BRANCH}_${COMMIT}-${SCAN_DATE}.html"
 
-    docker run --rm -e GRYPE_BY_CVE=true --name "grype-scanner-$SCAN_COUNT" \
-         -v "$(pwd)":/app \
-         -v "$TEMP_TEMPLATE":"$TEMP_TEMPLATE" \
-          $GRYPE_IMG sbom:/app/sbom.json \
-          -o template -t "$TEMP_TEMPLATE" > "$OUTPUT_FILE"
+    docker run --rm -e GRYPE_BY_CVE=true --name "grype-scanner-$SCAN_ID" \
+        --cpus="$CONTAINER_CPUS" \
+        --memory="$CONTAINER_MEM" \
+        --memory-swap="$CONTAINER_MEM" \
+        -v "$(pwd)":/app \
+        -v "$TEMP_TEMPLATE_JOB":"$TEMP_TEMPLATE_JOB" \
+        $GRYPE_IMG sbom:/app/sbom.json \
+        -o template -t "$TEMP_TEMPLATE_JOB" > "$OUTPUT_FILE" 2>/dev/null
 
     # === Validate Report ===
     if [[ $? -eq 0 ]]; then
-        echo "   ✅ Report generated: $(basename "$OUTPUT_FILE")"
+        local JOB_END=$SECONDS
+        local DURATION=$((JOB_END - JOB_START))
+        local FORMATED_TIME=$(format_time "$DURATION")
+        echo "   ✅ [$SCAN_ID] Report generated: $PROJECT_NAME (Time: $FORMATED_TIME)"
         # Clean up location paths in HTML
-        find "$REPORT_DIR" -type f -name "$(basename "$OUTPUT_FILE")" -exec sed -i -E 's|<td>\[Location<RealPath="([^"]+)".*>\]</td>|<td>\1</td>|g' {} +;
-        ((SUCCESS_COUNT++))
+        sed -i -E 's|<td>\[Location<RealPath="([^"]+)".*>\]</td>|<td>\1</td>|g' "$OUTPUT_FILE"
+        echo "success" > "$RESULTS_DIR/$SCAN_ID"
+        echo "$DURATION" > "$RESULTS_DIR/${SCAN_ID}_time"
     else
-        echo "   ❌ Error generating report for $PROJECT_NAME"
-        ((FAIL_COUNT++))
+        echo "   ❌ [$SCAN_ID] Scan failed: $PROJECT_NAME"
+        echo "fail" > "$RESULTS_DIR/$SCAN_ID"
     fi
 
-    # 🗑️ Cleanup cloned project immediately
-    echo "   🗑️  Cleaning up project folder..."
+    # 🗑️ Cleanup
+    rm -f "$TEMP_TEMPLATE_JOB"
     cd "$BASE_DIR" && rm -rf "$PROJECT_PATH"
+}
+
+SCAN_ID=0
+while IFS='|' read -r INDEX PROJECT_NAME DIR_NAME; do
+    if [[ -z "$INDEX" ]]; then continue; fi
     
-    echo "   ------------------------------------------------------------"
+    ((SCAN_ID++))
+    
+    # Process project in background
+    process_project "$INDEX" "$PROJECT_NAME" "$DIR_NAME" "$SCAN_ID" &
+    
+    ((ACTIVE_JOBS++))
+    
+    # Simple job control: wait if we hit MAX_PARALLEL
+    if [ "$ACTIVE_JOBS" -ge "$MAX_PARALLEL" ]; then
+        wait -n
+        ((ACTIVE_JOBS--))
+    fi
 done < <(echo "$PROJECT_LIST")
 
+# Wait for remaining jobs
+wait
+
 # === Final Summary ===
+TOTAL_TIME=$((SECONDS - START_TIME))
+FORMATED_TOTAL_TIME=$(format_time "$TOTAL_TIME")
+SCAN_COUNT=$(ls "$RESULTS_DIR" | grep -v "_time" | wc -l)
+SUCCESS_COUNT=$(grep -l "success" "$RESULTS_DIR"/* 2>/dev/null | wc -l)
+FAIL_COUNT=$(grep -l "fail" "$RESULTS_DIR"/* 2>/dev/null | wc -l)
 
 echo ""
 echo "============================================================"
@@ -155,12 +196,13 @@ echo "============================================================"
 echo "   Total projects processed: $SCAN_COUNT"
 echo "   ✅ Successful scans: $SUCCESS_COUNT"
 echo "   ❌ Failed scans: $FAIL_COUNT"
+echo "   ⏱️  Total time taken: $FORMATED_TOTAL_TIME"
 echo "   📁 Reports location: $REPORT_DIR"
 echo "============================================================"
 echo "✨ Bulk SCA Scan Complete!"
 echo "============================================================"
 
 # Exit with error if any scans failed
-if [ $FAIL_COUNT -gt 0 ]; then
+if [ "$FAIL_COUNT" -gt 0 ]; then
     exit 1
 fi

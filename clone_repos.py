@@ -57,8 +57,14 @@ def clone_repository(dir_name, git_url, branch, commit_id):
     print(f"   URL: {git_url}")
     print(f"   Branch: {branch}")
     
-    # Clone repository with specific branch
-    clone_cmd = f'git clone -b {branch} {git_url} "{project_path}"'
+    # Fast Cloning Optimization
+    # If a specific commit is provided, we need the commit history, 
+    # so we use blobless clone --filter=blob:none to save bandwidth
+    # If no commit is provided, we use a shallow clone --depth 1
+    if commit_id and commit_id.strip():
+        clone_cmd = f'git clone -b {branch} --filter=blob:none {git_url} "{project_path}"'
+    else:
+        clone_cmd = f'git clone -b {branch} --depth 1 {git_url} "{project_path}"'
     success, _ = run_command(clone_cmd, cwd=CLONE_DIR)
     if not success:
         print(f"❌ Failed to clone to {dir_name}")
