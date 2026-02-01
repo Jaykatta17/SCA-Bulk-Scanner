@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Projects - SCA Scanner{% endblock %}
+
+{% block content %}
+<h2 style="margin-bottom: 24px;">📂 Projects Overview</h2>
+
+<div class="card">
+    {% if projects %}
+    <table>
+        <thead>
+            <tr>
+                <th>Project Name</th>
+                <th>Total Scans</th>
+                <th>Last Scanned</th>
+                <th>Last Status</th>
+                <th>Run Time</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for project in projects %}
+            <tr>
+                <td><strong>{{ project.project_name }}</strong></td>
+                <td>{{ project.scan_count }}</td>
+                <td>{{ project.last_scan_date }}</td>
+                <td>
+                    {% if project.success %}
+                    <span class="badge badge-success">✓ Passed</span>
+                    {% else %}
+                    <span class="badge badge-danger">✗ Failed</span>
+                    {% endif %}
+                </td>
+                <td>{{ project.duration_seconds }}s</td>
+                <td><a href="/project/{{ project.project_name }}">View History & Trend</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+        <p>No project data found. Run a scan first.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

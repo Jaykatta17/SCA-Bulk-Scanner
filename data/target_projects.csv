@@ -1,5 +1,2 @@
 project_name,git_url,branch,commit_id,maintainer,assessment_type
 Gemini,https://github.com/gitleaks/gitleaks.git,master,,jay,Initial
-Gemini,https://github.com/amcorona/secrets-detection-test-data.git,master,40ed6fd78eef5992f15d5abe9976a052b76fce46,Jay,retest
-Sca Test Project,https://github.com/anchore/grype.git,main,3e86473,jay,Initial
-Sca Test Project 2,https://github.com/amcorona/secrets-detection-test-data.git,master,,Jay,retest

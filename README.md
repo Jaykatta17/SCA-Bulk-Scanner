@@ -64,6 +64,7 @@ LegacyApp,https://github.com/org/legacy.git,develop,a1b2c3d,jane,Follow-up
 ```
 
 That's it! The script will:
+
 1. 🔍 Iterate through all projects in the CSV
 2. 📥 Clone each project one-by-one
 3. 🔎 Scan the project for vulnerabilities
@@ -77,14 +78,14 @@ That's it! The script will:
 
 The `data/target_projects.csv` file should contain the following columns:
 
-| Column | Description | Required | Example |
-|--------|-------------|----------|---------|
-| `project_name` | Project identifier | ✅ Yes | `Gitleaks` |
-| `git_url` | Git repository URL | ✅ Yes | `https://github.com/gitleaks/gitleaks.git` |
-| `branch` | Git branch to scan | ✅ Yes | `main` or `develop` |
-| `commit_id` | Specific commit hash (optional) | ❌ No | `a1b2c3d` or leave empty for latest |
-| `maintainer` | Project maintainer | ❌ No | `john` |
-| `assessment_type` | Assessment category | ❌ No | `Initial` or `Follow-up` |
+| Column            | Description                     | Required | Example                                    |
+| ----------------- | ------------------------------- | -------- | ------------------------------------------ |
+| `project_name`    | Project identifier              | ✅ Yes   | `Gitleaks`                                 |
+| `git_url`         | Git repository URL              | ✅ Yes   | `https://github.com/gitleaks/gitleaks.git` |
+| `branch`          | Git branch to scan              | ✅ Yes   | `main` or `develop`                        |
+| `commit_id`       | Specific commit hash (optional) | ❌ No    | `a1b2c3d` or leave empty for latest        |
+| `maintainer`      | Project maintainer              | ❌ No    | `john`                                     |
+| `assessment_type` | Assessment category             | ❌ No    | `Initial` or `Follow-up`                   |
 
 **Example CSV:**
 
@@ -96,6 +97,7 @@ Grype,https://github.com/anchore/grype.git,main,,bob,Initial
 ```
 
 **Commit Handling:**
+
 - **Empty `commit_id`**: Clones the latest commit from the specified branch
 - **Specific `commit_id`**: Clones the branch and checks out that specific commit
 
@@ -108,11 +110,13 @@ SCA-{PROJECT_NAME}-{BRANCH}_{COMMIT}-{DATE}.html
 ```
 
 **Example:**
+
 ```
 SCA-myapp-main_a1b2c3d-2026-01-19.html
 ```
 
 Each report includes:
+
 - Project name
 - Git branch
 - Commit hash
@@ -148,6 +152,7 @@ Each report includes:
 ### Technical Details
 
 Both scripts use Docker containers to ensure:
+
 - Consistent scanning environment
 - No local installation requirements
 - Reproducible results across different systems
@@ -281,6 +286,7 @@ sca-scan:
 ### Docker Permission Issues
 
 If you encounter permission errors:
+
 ```bash
 sudo usermod -aG docker $USER
 # Log out and back in
@@ -289,6 +295,7 @@ sudo usermod -aG docker $USER
 ### Project Not Recognized as Git Repository
 
 Ensure the project directory is initialized as a Git repository:
+
 ```bash
 cd /path/to/project
 git rev-parse --is-inside-work-tree
@@ -297,6 +304,7 @@ git rev-parse --is-inside-work-tree
 ### Template Not Found
 
 Verify the template path exists:
+
 ```bash
 ls -la /path/to/SCA/template/html.tmpl
 ```

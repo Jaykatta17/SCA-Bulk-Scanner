@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Scan History - SCA Scanner{% endblock %}
+
+{% block content %}
+<h2 style="margin-bottom: 24px;">📊 Scan History</h2>
+
+{% if scans %}
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Date</th>
+                <th>Projects</th>
+                <th>Successful</th>
+                <th>Failed</th>
+                <th>Duration</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for scan in scans %}
+            <tr>
+                <td>#{{ scan.id }}</td>
+                <td>{{ scan.scan_date }}</td>
+                <td>{{ scan.total_projects }}</td>
+                <td><span class="badge badge-success">{{ scan.successful }}</span></td>
+                <td>
+                    {% if scan.failed > 0 %}
+                    <span class="badge badge-danger">{{ scan.failed }}</span>
+                    {% else %}
+                    <span class="badge badge-success">0</span>
+                    {% endif %}
+                </td>
+                <td>{{ scan.duration_seconds }}s</td>
+                <td><a href="/scan/{{ scan.id }}">View Details</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="card empty-state">
+    <p>No scans found. Run <code>python sca_scanner.py scan</code> to start scanning.</p>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,3 +1,5 @@
 cloned_projects
 reports
 package-lock.json
+data/sca_scanner.db
+__pycache__
