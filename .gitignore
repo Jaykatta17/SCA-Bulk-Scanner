@@ -1,3 +1,12 @@
 cloned_projects
 reports
 package-lock.json
+
+# Web UI
+webapp/workspace/*
+!webapp/workspace/.gitkeep
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+

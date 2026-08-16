@@ -1,0 +1,55 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Run `docker compose up --build` from the repository root (the ${PWD}
+# reference below depends on that — see the HOST_WORKSPACE_DIR comment).
+#
+# SECURITY NOTE: the `app` service is bind-mounted onto the *host* Docker
+# socket so it can run Syft/Grype exactly like scan_project.sh does outside
+# a container. That is equivalent to root access on the host. Only run this
+# stack on a trusted internal network; put it behind a reverse proxy with
+# authentication (or a VPN) before exposing it beyond localhost — this
+# compose file intentionally does not include an auth layer.
+
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: ./webapp
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DB: ${MONGO_DB:-sca_scanner}
+      WORKSPACE_DIR: /data/workspace
+      REPORTS_DIR: /data/reports
+      TEMPLATE_PATH: /app/template/html.tmpl
+      MAX_CONCURRENT_SCANS: ${MAX_CONCURRENT_SCANS:-2}
+      # DooD: `docker run -v` flags issued from inside this container are
+      # resolved by the HOST daemon against the HOST filesystem (see
+      # webapp/backend/app/config.py). This must be the absolute host path
+      # of the ./webapp/workspace bind mount below, which is why `docker
+      # compose up` needs to be run from the repo root.
+      HOST_WORKSPACE_DIR: ${PWD}/webapp/workspace
+    volumes:
+      - ./webapp/workspace:/data/workspace
+      - ./reports:/data/reports
+      - ./template:/app/template:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+
+volumes:
+  mongo_data:
