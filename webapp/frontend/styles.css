@@ -310,20 +310,34 @@ input[aria-invalid="true"] { border-color: var(--color-destructive); }
    =================================================================== */
 
 .scan-table-wrap { overflow-x: auto; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-card); }
-table.scan-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+table.scan-table { width: 100%; min-width: 900px; border-collapse: collapse; font-size: 0.88rem; table-layout: fixed; }
+.scan-table th:nth-child(1), .scan-table td:nth-child(1) { width: 15%; }
+.scan-table th:nth-child(2), .scan-table td:nth-child(2) { width: 19%; }
+.scan-table th:nth-child(3), .scan-table td:nth-child(3) { width: 10%; }
+.scan-table th:nth-child(4), .scan-table td:nth-child(4) { width: 8%; }
+.scan-table th:nth-child(5), .scan-table td:nth-child(5) { width: 11%; }
+.scan-table th:nth-child(6), .scan-table td:nth-child(6) { width: 10%; }
+.scan-table th:nth-child(7), .scan-table td:nth-child(7) { width: 10%; }
+.scan-table th:nth-child(8), .scan-table td:nth-child(8) { width: 7%; }
+.scan-table th:nth-child(9), .scan-table td:nth-child(9) { width: 10%; }
 .scan-table th {
   text-align: left; padding: var(--space-3) var(--space-4); font-size: 0.75rem;
   text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-muted-foreground);
   border-bottom: 1px solid var(--color-border); white-space: nowrap;
 }
-.scan-table td { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--color-border); vertical-align: middle; }
+.scan-table td { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--color-border); vertical-align: middle; overflow: hidden; }
 .scan-table tr:last-child td { border-bottom: none; }
 .scan-table tr:hover td { background: var(--color-muted); }
 
 .scan-row__project { display: block; font-weight: 600; }
 .scan-row__meta { display: block; font-size: 0.78rem; color: var(--color-muted-foreground); }
-.scan-row__repo { max-width: 220px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
-.scan-row__branch { background: var(--color-muted); padding: 2px 6px; border-radius: 4px; }
+.scan-row__repo { max-width: 100%; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+.scan-row__branch {
+  display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; vertical-align: bottom;
+  background: var(--color-muted); padding: 2px 6px; border-radius: 4px;
+}
+.col-author { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .scan-cards { list-style: none; margin: 0; padding: 0; display: none; flex-direction: column; gap: var(--space-3); }
 .scan-card { background: var(--color-card); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--space-4); }
