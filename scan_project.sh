@@ -48,17 +48,32 @@ format_time() {
     fi
 }
 
+# Escape a value for safe use as a sed replacement (with '|' as delimiter):
+# backslashes, the delimiter itself, and '&' (which sed expands to the
+# matched text) all need escaping so project/branch names can't corrupt the
+# substitution or the generated report.
+escape_sed_replacement() {
+    printf '%s' "$1" | sed -e 's/[\&|]/\\&/g'
+}
+
 # === Step 1: Scan projects in parallel from CSV ===
 echo ""
 echo "🔍 STEP 1: Processing projects in parallel"
 echo "============================================================"
 
 # Configuration for Parallelism & Resources
-MAX_PARALLEL=6           # Warning: High parallelism for a 4-CPU machine
-CONTAINER_CPUS="4.0"
-CONTAINER_MEM="4086m"
+MAX_PARALLEL=6
 ACTIVE_JOBS=0
 START_TIME=$SECONDS
+
+# Size per-container CPU/memory limits from the host's actual capacity so
+# MAX_PARALLEL concurrent containers can't oversubscribe the machine.
+HOST_CPUS=$(nproc 2>/dev/null || echo 4)
+HOST_MEM_MB=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 8192)
+CONTAINER_CPUS=$(awk -v cpus="$HOST_CPUS" -v jobs="$MAX_PARALLEL" 'BEGIN { v = cpus / jobs; if (v < 0.5) v = 0.5; printf "%.2f", v }')
+CONTAINER_MEM_MB=$(awk -v mem="$HOST_MEM_MB" -v jobs="$MAX_PARALLEL" 'BEGIN { v = int(mem / jobs); if (v < 512) v = 512; print v }')
+CONTAINER_MEM="${CONTAINER_MEM_MB}m"
+echo "⚙️  Host: ${HOST_CPUS} CPUs, ${HOST_MEM_MB}m RAM -> ${MAX_PARALLEL} parallel jobs @ ${CONTAINER_CPUS} CPUs / ${CONTAINER_MEM} each"
 
 # Get project info from CSV using the list flag
 PROJECT_LIST=$(python3 "$BASE_DIR/clone_repos.py" --list)
@@ -122,10 +137,13 @@ process_project() {
 
     # === Inject Variables into Template ===
     local TEMP_TEMPLATE_JOB="/tmp/html-injected-$SCAN_ID.tmpl"
+    local ESCAPED_PROJECT_NAME=$(escape_sed_replacement "$PROJECT_NAME")
+    local ESCAPED_BRANCH=$(escape_sed_replacement "$BRANCH")
+    local ESCAPED_COMMIT=$(escape_sed_replacement "$COMMIT")
     sed \
-        -e "s|PROJECT_VAR|$PROJECT_NAME|g" \
-        -e "s|BRANCH_VAR|$BRANCH|g" \
-        -e "s|COMMIT_VAR|$COMMIT|g" \
+        -e "s|PROJECT_VAR|$ESCAPED_PROJECT_NAME|g" \
+        -e "s|BRANCH_VAR|$ESCAPED_BRANCH|g" \
+        -e "s|COMMIT_VAR|$ESCAPED_COMMIT|g" \
         "$TEMPLATE_PATH" > "$TEMP_TEMPLATE_JOB"
 
     # === Run Grype Scan ===

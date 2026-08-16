@@ -7,6 +7,7 @@ Reads project information from CSV and clones repositories with commit handling
 
 import csv
 import os
+import shutil
 import subprocess
 import sys
 import argparse
@@ -19,11 +20,10 @@ DEFAULT_CSV_FILE = BASE_DIR / "data" / "target_projects.csv"
 CLONE_DIR = BASE_DIR / "cloned_projects"
 
 def run_command(cmd, cwd=None):
-    """Execute shell command and return (success, output)"""
+    """Execute a command (given as an argument list) and return (success, output)"""
     try:
         result = subprocess.run(
             cmd,
-            shell=True,
             cwd=cwd,
             capture_output=True,
             text=True,
@@ -31,7 +31,7 @@ def run_command(cmd, cwd=None):
         )
         return True, result.stdout.strip()
     except subprocess.CalledProcessError as e:
-        print(f"❌ Command failed: {cmd}")
+        print(f"❌ Command failed: {' '.join(cmd)}")
         print(f"Error: {e.stderr}")
         return False, e.stderr
 
@@ -43,47 +43,58 @@ def sanitize_name(name):
     sanitized = re.sub(r'_+', '_', sanitized)
     return sanitized.strip('_')
 
+def is_safe_arg(value):
+    """Reject values that could be interpreted as command-line flags (git argument injection)"""
+    return bool(value) and not value.startswith('-')
+
 def clone_repository(dir_name, git_url, branch, commit_id):
     """Clone repository and checkout specific commit if provided"""
-    
+
+    # Reject values that could be interpreted as git flags instead of a
+    # url/branch/commit, since these are passed through from an untrusted CSV
+    for label, value in (("git_url", git_url), ("branch", branch), ("commit_id", commit_id)):
+        if value and not is_safe_arg(value):
+            print(f"❌ Refusing to clone {dir_name}: unsafe {label} value: {value!r}")
+            return False
+
     project_path = CLONE_DIR / dir_name
-    
+
     # Remove existing directory if it exists
     if project_path.exists():
         print(f"🗑️  Removing existing directory: {dir_name}")
-        run_command(f'rm -rf "{project_path}"')
-    
+        shutil.rmtree(project_path, ignore_errors=True)
+
     print(f"\n🔹 Cloning: {dir_name}")
     print(f"   URL: {git_url}")
     print(f"   Branch: {branch}")
-    
+
     # Fast Cloning Optimization
-    # If a specific commit is provided, we need the commit history, 
+    # If a specific commit is provided, we need the commit history,
     # so we use blobless clone --filter=blob:none to save bandwidth
     # If no commit is provided, we use a shallow clone --depth 1
     if commit_id and commit_id.strip():
-        clone_cmd = f'git clone -b {branch} --filter=blob:none {git_url} "{project_path}"'
+        clone_cmd = ['git', 'clone', '-b', branch, '--filter=blob:none', git_url, str(project_path)]
     else:
-        clone_cmd = f'git clone -b {branch} --depth 1 {git_url} "{project_path}"'
+        clone_cmd = ['git', 'clone', '-b', branch, '--depth', '1', git_url, str(project_path)]
     success, _ = run_command(clone_cmd, cwd=CLONE_DIR)
     if not success:
         print(f"❌ Failed to clone to {dir_name}")
         return False
-    
+
     # Checkout specific commit if provided
     if commit_id and commit_id.strip():
         print(f"   Commit: {commit_id}")
-        checkout_cmd = f'git checkout {commit_id}'
+        checkout_cmd = ['git', 'checkout', commit_id]
         success, _ = run_command(checkout_cmd, cwd=project_path)
         if not success:
             print(f"⚠️  Warning: Failed to checkout commit {commit_id}")
             print(f"   Using latest commit from {branch} branch")
     else:
         # Get latest commit hash for logging
-        success, latest_commit = run_command('git rev-parse --short HEAD', cwd=project_path)
+        success, latest_commit = run_command(['git', 'rev-parse', '--short', 'HEAD'], cwd=project_path)
         if success:
             print(f"   Commit: {latest_commit} (latest)")
-    
+
     print(f"✅ Successfully cloned: {dir_name}")
     return True
 
