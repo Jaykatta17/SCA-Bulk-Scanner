@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
 
 # ============================================
 # SCA Scanner Script - Bulk Scan from CSV

@@ -310,7 +310,29 @@ ls -la /path/to/SCA/template/html.tmpl
 
 ## 📄 License
 
-Internal Projects tool for security compliance scanning.
+This project is licensed under the [Apache License 2.0](LICENSE).
+
+### Third-Party Licenses & Attribution
+
+This toolkit doesn't bundle any third-party source code, but it depends on
+and integrates with the following tools and libraries at runtime. All
+trademarks and copyrights belong to their respective owners.
+
+| Component | Publisher | License | Usage |
+|-----------|-----------|---------|-------|
+| [Syft](https://github.com/anchore/syft) | Anchore, Inc. | Apache-2.0 | SBOM generation (`anchore/syft` Docker image) |
+| [Grype](https://github.com/anchore/grype) | Anchore, Inc. | Apache-2.0 | Vulnerability scanning (`anchore/grype` Docker image) |
+| [DataTables](https://datatables.net/) | SpryMedia Ltd | MIT | HTML report table (loaded via CDN) |
+| [jQuery](https://jquery.com/) | OpenJS Foundation | MIT | HTML report scripting (loaded via CDN) |
+| [pdfmake](https://github.com/bpampuch/pdfmake) | bpampuch | MIT | HTML report PDF export (loaded via CDN) |
+| [JSZip](https://stuk.github.io/jszip/) | Stuart Knightley | MIT / GPLv3 (dual) | HTML report Excel export (loaded via CDN) |
+| [Font Awesome Free](https://fontawesome.com/) | Fonticons, Inc. | Font Awesome Free License (icons: CC BY 4.0, code: MIT) | HTML report icons (loaded via CDN) |
+| [Devicon](https://devicon.dev/) | Devicon contributors | MIT | HTML report package-type icons (loaded via CDN) |
+| [Iconify](https://iconify.design/) | Iconify | MIT | HTML report fallback icons (loaded via CDN) |
+
+Syft and Grype are not redistributed with this repository — they are pulled
+as official Docker images at scan time and remain governed by Anchore's own
+licensing. See each project's repository for full license text.
 
 ## 🤝 Support
 
