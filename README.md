@@ -16,6 +16,7 @@ This tool provides **automated bulk security scanning** of multiple software pro
 - **🌿 Git Integration**: Automatically captures branch and commit information
 - **📄 Custom HTML Reports**: Generates professional HTML reports with project metadata
 - **🧹 Auto Cleanup**: Removes cloned repositories after scanning
+- **🖥️ Web UI & Scan History**: Optional dockerized web app to submit one-off scans from a form and browse past scans (status, severity breakdown, report links) backed by MongoDB — see [`webapp/README.md`](webapp/README.md)
 
 ## 📁 Project Structure
 
@@ -28,7 +29,11 @@ SCA/
 ├── template/
 │   ├── html.tmpl         # HTML report template
 │   └── report_template.xlsx
-└── reports/              # Generated scan reports
+├── reports/               # Generated scan reports (shared with the web UI)
+├── webapp/                # Optional web UI + API (see webapp/README.md)
+│   ├── backend/           # FastAPI app + scan engine
+│   └── frontend/          # Static HTML/CSS/JS, no build step
+└── docker-compose.yml      # Web UI + MongoDB stack
 ```
 
 ## 🔧 Prerequisites
@@ -72,6 +77,20 @@ That's it! The script will:
 
 > [!TIP]
 > This sequential processing ensures that you don't run out of disk space even when scanning dozens of large repositories simultaneously.
+
+### Web UI (single scans + history)
+
+For scanning one project at a time from a form instead of editing a CSV,
+with results tracked in MongoDB:
+
+```bash
+docker compose up --build
+```
+
+Then open <http://localhost:8080>, fill in project name, repo URL, branch,
+author, and (optionally) a commit ID or a git token for private repos.
+Full details, API reference, and security notes are in
+[`webapp/README.md`](webapp/README.md).
 
 ### CSV Configuration Format
 
@@ -314,14 +333,19 @@ This project is licensed under the [Apache License 2.0](LICENSE).
 
 ### Third-Party Licenses & Attribution
 
-This toolkit doesn't bundle any third-party source code, but it depends on
-and integrates with the following tools and libraries at runtime. All
-trademarks and copyrights belong to their respective owners.
+This toolkit's own source code is Apache-2.0. It also depends on, integrates
+with, or (in one case, noted below) redistributes the following tools and
+libraries. All trademarks and copyrights belong to their respective owners.
 
 | Component | Publisher | License | Usage |
 |-----------|-----------|---------|-------|
 | [Syft](https://github.com/anchore/syft) | Anchore, Inc. | Apache-2.0 | SBOM generation (`anchore/syft` Docker image) |
 | [Grype](https://github.com/anchore/grype) | Anchore, Inc. | Apache-2.0 | Vulnerability scanning (`anchore/grype` Docker image) |
+| [MongoDB](https://www.mongodb.com/) | MongoDB, Inc. | SSPL v1 | Scan history storage (`mongo` Docker image, web UI only) |
+| [FastAPI](https://fastapi.tiangolo.com/) | Sebastián Ramírez | MIT | Web UI backend framework |
+| [Uvicorn](https://www.uvicorn.org/) | Encode | BSD-3-Clause | Web UI ASGI server |
+| [PyMongo](https://pymongo.readthedocs.io/) | MongoDB, Inc. | Apache-2.0 | Web UI MongoDB driver |
+| [Pydantic](https://docs.pydantic.dev/) | Pydantic Services Inc. | MIT | Web UI request/response validation |
 | [DataTables](https://datatables.net/) | SpryMedia Ltd | MIT | HTML report table (loaded via CDN) |
 | [jQuery](https://jquery.com/) | OpenJS Foundation | MIT | HTML report scripting (loaded via CDN) |
 | [pdfmake](https://github.com/bpampuch/pdfmake) | bpampuch | MIT | HTML report PDF export (loaded via CDN) |
@@ -329,10 +353,14 @@ trademarks and copyrights belong to their respective owners.
 | [Font Awesome Free](https://fontawesome.com/) | Fonticons, Inc. | Font Awesome Free License (icons: CC BY 4.0, code: MIT) | HTML report icons (loaded via CDN) |
 | [Devicon](https://devicon.dev/) | Devicon contributors | MIT | HTML report package-type icons (loaded via CDN) |
 | [Iconify](https://iconify.design/) | Iconify | MIT | HTML report fallback icons (loaded via CDN) |
+| [Fira Sans / Fira Code](https://fonts.google.com/) | Mozilla / Nikita Prokopov | SIL OFL 1.1 | Web UI typography (loaded via Google Fonts CDN) |
+| [UI/UX Pro Max Skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) | Next Level Builder | MIT | Claude Code design-assistant skill; **files redistributed** under `.claude/skills/` (dev tooling only, not shipped in the running app) — original `LICENSE` retained at `.claude/skills/ui-ux-pro-max/LICENSE` |
 
-Syft and Grype are not redistributed with this repository — they are pulled
-as official Docker images at scan time and remain governed by Anchore's own
-licensing. See each project's repository for full license text.
+Syft, Grype, and MongoDB are not redistributed with this repository — they
+are pulled as official Docker images at run time and remain governed by
+their publishers' own licensing (note MongoDB's SSPL is not an OSI-approved
+open-source license; review it before redistributing this stack yourself).
+See each project's repository for full license text.
 
 ## 🤝 Support
 
